@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-100 dark:bg-gray-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiningAI</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+</head>
+<body class="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col">
+    <div class="flex-grow flex flex-col">
+        <header class="bg-white dark:bg-gray-800 shadow">
+            <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 flex items-center justify-between">
+                <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">ToxicPredict AI</h1>
+                <button id="darkModeToggle" class="px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                    🌓
+                </button>
+            </div>
+        </header>
+        <main class="flex-grow bg-gray-100 dark:bg-gray-900">
+            <div class="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+                <div class="px-4 py-6 sm:px-0">
+                    <div class="rounded-lg border-4 border border-gray-200 dark:border-gray-700 p-4 sm:p-6 lg:p-8 bg-white dark:bg-gray-800">
+                        <div class="mb-6">
+                            <label for="target_column" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Enter Column Name:</label>
+                            <div class="mt-1 flex rounded-md shadow-sm">
+                                <input type="text" id="target_column" class="block w-full flex-1 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm pl-3" placeholder="Column Name">
+                                <button onclick="submitColumn()" class="ml-3 inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">Submit</button>
+                            </div>
+                        </div>
+                        <div id="columns" class="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-md text-sm font-semibold text-gray-700 dark:text-gray-300">Columns in dataset will appear here.</div>
+                        <div id="console" class="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-md text-sm font-semibold text-gray-700 dark:text-gray-300">Server messages will appear here.</div>
+                        <div id="accuracy" class="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-md text-sm font-semibold text-indigo-600 dark:text-indigo-400">Model MAE will appear here.</div>
+                        <div class="mt-6">
+                            <img id="dataImage" src="" alt="Graph will appear here" class="w-full h-auto rounded-lg shadow-md">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script>
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
+        socket.on('connect', function() { console.log('Connected to the websocket server.'); });
+        socket.on('available_columns', function(data) {
+            document.getElementById('columns').innerHTML = 'Columns in dataset: ' + data.columns.join(', ');
+        });
+        socket.on('console_output', function(data) {
+            document.getElementById('console').innerText = data.message || data.error;
+        });
+        socket.on('model_mae', function(data) {
+            document.getElementById('accuracy').innerText = 'Percent Accuracy (MAEP): ' + data.mae.toFixed(4) + '%';
+        });
+        socket.on('new_plot', function(data) {
+            document.getElementById('dataImage').src = data.image_url;
+        });
+        function submitColumn() {
+            var column_name = document.getElementById('target_column').value;
+            socket.emit('process_data', {'target_column': column_name});
+        }
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        const html = document.documentElement;
+
+        darkModeToggle.addEventListener('click', () => {
+            html.classList.toggle('dark');
+        });
+    </script>
+</body>
+</html>
