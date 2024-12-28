@@ -34,6 +34,11 @@ def download_and_load_data():
     df = pd.read_csv(local_file_name)
     return df
 
+def custom_percent_accuracy(y_true, y_pred):
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    max_val = np.max(y_true)
+    return 100 * (1 - np.mean(np.abs(y_true - y_pred) / max_val))
+
 @socketio.on('connect')
 def on_connect(sid):
     df = download_and_load_data()
@@ -62,20 +67,24 @@ def handle_process_data(json, methods=['GET', 'POST']):
     model = LinearRegression()
     model.fit(features, target)
     predictions = model.predict(features)
-    mae = 100 - mean_absolute_error(target, predictions)*100
+    predictions = scaler.inverse_transform(predictions)  # Inverse transform predictions to original scale
+    mape = custom_percent_accuracy(df[[target_column]].values, predictions)
 
     # Generate and emit the plot
     plt.figure(figsize=(10, 5))
-    plt.plot(target, label='Actual')
-    plt.plot(predictions, label='Predicted', linestyle='--')
+    entries = np.arange(len(df[target_column]))  # Number of entries for the x-axis
+    plt.plot(entries, df[target_column], label='Actual')  # Use actual values
+    plt.plot(entries, predictions, label='Predicted', linestyle='--')
     plt.title(f'Predictions vs Actual for {target_column}')
+    plt.xlabel('Number of Entries')
+    plt.ylabel(target_column)
     plt.legend()
     img = io.BytesIO()
     plt.savefig(img, format='png')
     img.seek(0)
     plot_url = base64.b64encode(img.getvalue()).decode('utf8')
     emit('new_plot', {'image_url': f"data:image/png;base64,{plot_url}"})
-    emit('model_mae', {'mae': mae})
+    emit('model_mae', {'mae': mape})
     plt.close()
 
 if __name__ == '__main__':
