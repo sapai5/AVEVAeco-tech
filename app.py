@@ -151,8 +151,12 @@ def handle_process_data(json, methods=['GET', 'POST']):
 
     plt.plot(entries, df[target_column], label='Actual', color='blue')
     plt.plot(entries, predictions, label='Predicted', color='orange', linestyle='--')
-    plt.plot(future_entries_x, future_predictions, label='Future Predictions',
-             color='red', linestyle='--')
+    plt.plot(future_entries_x, future_predictions, label='Future Predictions', color='red', linestyle='--')
+
+    # Connect the last prediction to the first future prediction
+    if len(predictions) > 0 and len(future_predictions) > 0:
+        plt.plot([len(predictions) - 1, len(predictions)], [predictions[-1], future_predictions[0]], color='red',
+                 linestyle='--')
 
     plt.title(f'Predictions vs Actual for {target_column}')
     plt.xlabel('Number of Entries')
