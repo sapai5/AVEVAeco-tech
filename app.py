@@ -135,6 +135,7 @@ def on_connect():
     try:
         df = download_and_load_data()
         columns = df.columns.tolist()
+        columns.remove("ID")
         emit('available_columns', {'columns': columns})
         print(f"Emitted {len(columns)} columns to client")
     except Exception as e:
