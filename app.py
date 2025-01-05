@@ -260,14 +260,14 @@ def handle_process_data(json):
 
                 Based on the historical data and future predictions for {target_column}, analyze the environmental impact 
                 and sustainability of continuing mining operations. Consider any trends, patterns, or concerning indicators 
-                in the data. Give a definitive yes or no answer at the end if we should continue mining. Keep the whole
-                response under 100 words.
+                in the data. Give a definitive yes or no answer at the end if we should continue mining. You must either 
+                say yes or no, not maybe or anything like that. Keep the whole response under 200 words.
                 """
 
         print("Process completed successfully")
 
         response = openai_client.beta.chat.completions.parse(
-            model="gpt-4o-2024-08-06",  # Use the appropriate model that supports structured outputs
+            model="gpt-3.5-turbo",  # Use the appropriate model that supports structured outputs
             messages=[
                 {"role": "system", "content": "You are an AI assistant that advises on mining sustainability using provided data."},
                 {"role": "user", "content": prompt}
