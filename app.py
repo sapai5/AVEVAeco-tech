@@ -143,6 +143,9 @@ def on_connect():
         print(f"Error in on_connect: {error_msg}")
         emit('error', {'message': error_msg})
 
+from openai import OpenAI
+
+openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 @socketio.on('process_data')
 def handle_process_data(json):
@@ -245,7 +248,49 @@ def handle_process_data(json):
         emit('model_mae', {'mae': float(mape)})
         emit('console_output', {'message': f"Processing complete for column: {target_column}"})
 
+        all_columns = df.columns.tolist()
+
+        prompt = f"""
+                Given the following information about mining data, please assess if it is sustainable to continue mining:
+
+                Available data columns: {', '.join(all_columns)}
+                Target column analyzed: {target_column}
+                Prediction accuracy: {mape}%
+                Number of future predictions: {len(future_predictions)}
+
+                Based on the historical data and future predictions for {target_column}, analyze the environmental impact 
+                and sustainability of continuing mining operations. Consider any trends, patterns, or concerning indicators 
+                in the data. Give a definitive yes or no answer at the end if we should continue mining. Keep the whole
+                response under 100 words.
+                """
+
         print("Process completed successfully")
+
+        response = openai_client.beta.chat.completions.parse(
+            model="gpt-4o-2024-08-06",  # Use the appropriate model that supports structured outputs
+            messages=[
+                {"role": "system", "content": "You are an AI assistant that advises on mining sustainability using provided data."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        analysis = response.choices[0].message.content
+
+        print("\n=== AI Analysis ===")
+        print(analysis)
+        print("==================\n")
+
+        emit('console_output', {
+            'message': f"""
+                    Analysis for {target_column}:
+
+                    {analysis}
+
+                    """
+        })
+
+        print("Process completed successfully")
+
 
     except Exception as e:
         error_message = f'Failed to process data: {str(e)}'
