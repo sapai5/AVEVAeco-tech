@@ -129,6 +129,86 @@ def download_and_load_data():
         raise Exception(str(e))
 
 
+def get_mineral_weights(columns):
+    """Get weights for different minerals using OpenAI API"""
+    prompt = f"""
+    Given these minerals from soil data: {', '.join(columns)}
+    Provide weights (0-1) for each mineral's importance in determining mining sustainability.
+    Consider: environmental impact, economic value, scarcity, extraction difficulty, and recovery time.
+    Return only a Python dictionary with minerals as keys and weights as values.
+    Example format: {{"mineral1": 0.8, "mineral2": 0.6}}
+    """
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are an expert in mining sustainability and mineral importance."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3
+        )
+        weights_str = response.choices[0].message.content.strip()
+        return eval(weights_str)
+    except Exception as e:
+        print(f"Error getting mineral weights: {e}")
+        return {col: 1.0 / len(columns) for col in columns}
+
+
+def calculate_sustainability_scores(all_predictions, historical_data, weights):
+    """
+    Calculate 25 sustainability scores, each combining 4 sequential points from predictions.
+    Returns scores on a scale of 1-10.
+    """
+    scores = []
+    points_per_score = 4  # Number of prediction points to combine for each score
+    num_scores = 25  # Total number of scores we want to generate
+
+    # Validate we have enough predictions
+    prediction_length = len(next(iter(all_predictions.values())))
+    if prediction_length < num_scores * points_per_score:
+        raise ValueError(
+            f"Need at least {num_scores * points_per_score} predictions, but only have {prediction_length}")
+
+    for score_index in range(num_scores):
+        start_idx = score_index * points_per_score
+        end_idx = start_idx + points_per_score
+        point_score = 0
+        total_weight = 0
+
+        for mineral, weight in weights.items():
+            if mineral not in all_predictions:
+                continue
+
+            # Get historical stats for the mineral
+            hist_values = historical_data[mineral]
+            hist_mean = np.nanmean(hist_values)
+            hist_std = np.nanstd(hist_values)
+
+            # Average the predictions for the 4 points
+            predicted_values = all_predictions[mineral][start_idx:end_idx]
+            avg_predicted_value = np.mean(predicted_values)
+
+            # Calculate z-score based on historical distribution
+            z_score = abs((avg_predicted_value - hist_mean) / (hist_std if hist_std != 0 else 1))
+
+            # Convert to 1-10 scale (lower z-score means higher sustainability)
+            mineral_score = max(1, min(10, 10 * (1 - (z_score / 3))))
+
+            point_score += mineral_score * weight
+            total_weight += weight
+
+        final_score = (point_score / total_weight) if total_weight > 0 else 1
+
+        scores.append({
+            'time_period': score_index + 1,
+            'points_considered': f"{start_idx + 1}-{end_idx}",
+            'score': round(final_score, 2)
+        })
+
+    return scores
+
+
 @socketio.on('connect')
 def on_connect():
     print("Client connected")
@@ -147,6 +227,7 @@ from openai import OpenAI
 
 openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
+
 @socketio.on('process_data')
 def handle_process_data(json):
     try:
@@ -162,6 +243,9 @@ def handle_process_data(json):
             print(error_msg)
             emit('console_output', {'error': error_msg})
             return
+
+        # Store all predictions for sustainability calculation
+        all_predictions = {}
 
         print("Processing data...")
         # Data processing
@@ -221,6 +305,9 @@ def handle_process_data(json):
         future_predictions_scaled = model.predict(future_features_scaled)
         future_predictions = scaler_target.inverse_transform(future_predictions_scaled.reshape(-1, 1)).ravel()
 
+        # Store predictions for sustainability calculation
+        all_predictions[target_column] = future_predictions
+
         print("Preparing chart data...")
         # Prepare data for Recharts
         chart_data = []
@@ -242,14 +329,67 @@ def handle_process_data(json):
         # Calculate accuracy
         mape = custom_percent_accuracy(df[target_column], predictions)
 
+        print("Calculating sustainability scores...")
+        # Get mineral columns (excluding ID)
+        mineral_columns = [col for col in df.columns if col != 'ID']
+
+        # Get weights for all minerals
+        weights = get_mineral_weights(mineral_columns)
+
+        # Process predictions for other minerals if not already processed
+        for column in mineral_columns:
+            if column not in all_predictions:
+                # Process additional columns for sustainability calculation
+                df[column] = pd.to_numeric(df[column], errors='coerce')
+                df[column].fillna(method='ffill', inplace=True)
+                df[column].fillna(method='bfill', inplace=True)
+
+                # Generate predictions using the same process
+                avg_height, avg_distance = analyze_peaks(df[column].values)
+                synthetic = generate_synthetic_peaks(future_entries, avg_height, avg_distance)
+                all_predictions[column] = synthetic
+
+        # Calculate sustainability scores
+        sustainability_scores = calculate_sustainability_scores(all_predictions, df, weights)
+
+        # Print sustainability scores
+        print("\nSustainability Scores (Scale 1-10)")
+        print("-" * 60)
+        print("{:^8} | {:^20} | {:^10} | {:^10}".format("Period", "Points Considered", "Score", "Trend"))
+        print("-" * 60)
+
+        prev_score = None
+        for score in sustainability_scores:
+            trend = ''
+            if prev_score is not None:
+                diff = score['score'] - prev_score
+                trend = '↑' if diff > 0 else '↓' if diff < 0 else '→'
+                trend = "{} ({:+.2f})".format(trend, diff)
+
+            print("{:^8} | {:^20} | {:^10.2f} | {:^10}".format(
+                score['time_period'],
+                score['points_considered'],
+                score['score'],
+                trend
+            ))
+            prev_score = score['score']
+
+        print("-" * 60)
+
+        # Calculate overall statistics
+        avg_score = sum(s['score'] for s in sustainability_scores) / len(sustainability_scores)
+        total_trend = sustainability_scores[-1]['score'] - sustainability_scores[0]['score']
+        print("\nSummary Statistics:")
+        print("Average Score: {:.2f}".format(avg_score))
+        print("Overall Trend: {:+.2f}".format(total_trend))
+
         print("Emitting results...")
-        # Emit results
+        # Emit results (keeping existing emissions)
         emit('new_plot', {'data': chart_data, 'column': target_column})
         emit('model_mae', {'mae': float(mape)})
         emit('console_output', {'message': f"Processing complete for column: {target_column}"})
 
         all_columns = df.columns.tolist()
-
         prompt = f"""
                 Given the following information about mining data, please assess if it is sustainable to continue mining:
 
@@ -266,10 +406,11 @@ def handle_process_data(json):
 
         print("Process completed successfully")
 
-        response = openai_client.beta.chat.completions.parse(
-            model="gpt-3.5-turbo",  # Use the appropriate model that supports structured outputs
+        response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are an AI assistant that advises on mining sustainability using provided data."},
+                {"role": "system",
+                 "content": "You are an AI assistant that advises on mining sustainability using provided data."},
                 {"role": "user", "content": prompt}
             ]
         )
@@ -282,15 +423,13 @@ def handle_process_data(json):
 
         emit('console_output', {
             'message': f"""
-                    Analysis for {target_column}:
+                    Sustainability Analysis for {target_column}:
 
                     {analysis}
-
                     """
         })
 
         print("Process completed successfully")
-
 
     except Exception as e:
         error_message = f'Failed to process data: {str(e)}'
