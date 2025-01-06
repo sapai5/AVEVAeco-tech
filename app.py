@@ -353,35 +353,47 @@ def handle_process_data(json):
         sustainability_scores = calculate_sustainability_scores(all_predictions, df, weights)
 
         # Print sustainability scores
-        print("\nSustainability Scores (Scale 1-10)")
-        print("-" * 60)
-        print("{:^8} | {:^20} | {:^10} | {:^10}".format("Period", "Points Considered", "Score", "Trend"))
-        print("-" * 60)
+        #print("\nSustainability Scores (Scale 1-10)")
+        #print("-" * 60)
+        #print("{:^8} | {:^20} | {:^10} | {:^10}".format("Period", "Points Considered", "Score", "Trend"))
+        #print("-" * 60)
 
+        sustainability_graph_data = []
         prev_score = None
         for score in sustainability_scores:
-            trend = ''
+            trend = None
             if prev_score is not None:
                 diff = score['score'] - prev_score
-                trend = '↑' if diff > 0 else '↓' if diff < 0 else '→'
-                trend = "{} ({:+.2f})".format(trend, diff)
+                trend = diff
 
-            print("{:^8} | {:^20} | {:^10.2f} | {:^10}".format(
-                score['time_period'],
-                score['points_considered'],
-                score['score'],
-                trend
-            ))
+            graph_point = {
+                'period': score['time_period'],
+                'points': score['points_considered'],
+                'score': score['score'],
+                'trend': trend if trend is not None else 0
+            }
+            sustainability_graph_data.append(graph_point)
             prev_score = score['score']
-
-        print("-" * 60)
 
         # Calculate overall statistics
         avg_score = sum(s['score'] for s in sustainability_scores) / len(sustainability_scores)
         total_trend = sustainability_scores[-1]['score'] - sustainability_scores[0]['score']
-        print("\nSummary Statistics:")
-        print("Average Score: {:.2f}".format(avg_score))
-        print("Overall Trend: {:+.2f}".format(total_trend))
+
+        # Create metadata for the graph
+        graph_metadata = {
+            'averageScore': round(avg_score, 2),
+            'overallTrend': round(total_trend, 2),
+            'totalPeriods': len(sustainability_scores),
+            'minScore': min(s['score'] for s in sustainability_scores),
+            'maxScore': max(s['score'] for s in sustainability_scores)
+        }
+
+        # Emit sustainability graph data
+        emit('SustainabilityGraph', {
+            'graphData': sustainability_graph_data,
+            'metadata': graph_metadata,
+            'targetColumn': target_column
+        })
 
         print("Emitting results...")
         # Emit results (keeping existing emissions)
