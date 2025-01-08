@@ -1,16 +1,15 @@
 import eventlet
 eventlet.monkey_patch()
-from flask import Flask, render_template
+from flask import Flask
 from flask_socketio import SocketIO, emit
 import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks
 from sklearn.ensemble import RandomForestRegressor
-import matplotlib.pyplot as plt
+from openai import OpenAI
 import boto3
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import ClientError
 import io
-import base64
 import os
 from flask_cors import CORS
 import warnings
@@ -223,10 +222,28 @@ def on_connect():
         print(f"Error in on_connect: {error_msg}")
         emit('error', {'message': error_msg})
 
-from openai import OpenAI
+
+@socketio.on('request_full_dataset')
+def handle_dataset_request():
+    print("Received request for full dataset")
+    try:
+        df = download_and_load_data()
+        df.fillna(0, inplace=True)
+        # Convert DataFrame to a dictionary format suitable for JSON serialization
+        data_dict = {
+            'columns': df.columns.tolist(),
+            'data': df.to_dict('records')  # Convert DataFrame to list of dictionaries
+        }
+
+        # Emit the full dataset
+        emit('full_dataset', data_dict)
+        print(f"Successfully emitted dataset with {len(df)} rows and {len(df.columns)} columns")
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Error in handle_dataset_request: {error_msg}")
+        emit('error', {'message': error_msg})
 
 openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-
 
 @socketio.on('process_data')
 def handle_process_data(json):
