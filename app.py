@@ -197,7 +197,7 @@ def calculate_sustainability_scores(all_predictions, historical_data, weights):
             point_score += mineral_score * weight
             total_weight += weight
 
-        final_score = (point_score / total_weight) if total_weight > 0 else 1
+        final_score = 10 - (point_score / total_weight) if total_weight > 0 else 1
 
         scores.append({
             'time_period': score_index + 1,
