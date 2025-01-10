@@ -29,7 +29,7 @@ const DataChart: React.FC<DataChartProps> = ({ data, targetColumn }) => {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis 
                 dataKey="entry" 
-                label={{ value: 'Number of Entries', position: 'insideBottom', offset: -22 }}
+                label={{ value: 'Number of Samples', position: 'insideBottom', offset: -22 }}
                 allowDataOverflow={true}
                 tickMargin={10}
                 domain={['dataMin', 'dataMax']}
