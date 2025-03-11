@@ -1,4 +1,11 @@
-## Getting Started
+## Welcome to TerraMind!
+
+Here is the first version of our application deployed to the web, with future changes on the way.
+In the repository is the application itself, along with the dataset used.
+
+## [terramind.us](url)
+
+## Getting Started locally
 
 First, run the development server:
 
